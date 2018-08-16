@@ -1,0 +1,352 @@
+---
+title: "Assignment 2"
+author: "Steve Wilkins-Reeves"
+date: '2018-02-28'
+output:
+  pdf_document: default
+  word_document: default
+header-includes: \usepackage{xcolor}
+fig_width: 2.5
+---
+\newcommand{\highlight}[1]{%
+  \colorbox{red!50}{$\displaystyle#1$}}
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question 1
+1. As in the lecture slides on profile likelihood, we require numerical methods to estimate $\sigma_A^2,\ \phi,\ \Gamma,\ \& \ \sigma_U^2$.  Once these have been estimated, a closed form solution exists for the ML estimates of $\beta, \&\ \tau^2$.
+
+2. 
+$$
+  \begin{aligned}
+\text{since}\ Y_{ijk} &=  X_{ijk}\beta + U_i + V_{ij1} + V_{ij2}W_{ijk} + A_{ijk} + e_{ijk}\\ 
+\text{Where}\ e_{ijk} &\stackrel{IID}{\sim} N(0,\tau^2) \\
+\highlight{cov(Y_{ijk},A_{ijn})} &= cov(A_{ijk},A_{ijn}) = \highlight{\sigma_A^2exp(-\frac{|t_{ijk} - t_{ijn}|}{\phi})} \\
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+\highlight{cov(Y_{ijk},V_{ij1})} &= cov(V_{ij1} + V_{ij2}W_{ijk},V_{ij1}) = \highlight{\Gamma_{12} + W_{ijk}\Gamma_{22}} \\
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+\highlight{cov(Y_{ijk},Y_{imn})}\ &(m,j) \neq (n,k) ,\ \text{If}\ m = j, n \neq k\ \\
+&= cov(U_i,U_i) + cov(V_{ij1} + V_{ij2}W_{ijk},V_{im1} + V_{im2}W_{imn}) + cov(A_{ijk},A_{imn}) \\
+&= \highlight{\sigma_U^2 + \Gamma_{11} + (W_{ijk} + W_{imn}) \Gamma_{12} + W_{ijk}W_{imn}\Gamma_{22} + \sigma_A^2exp(- \frac{|t_{ijk} - t_{imn}|}{\phi})} \\
+&\ \ \ \ \  \text{If}\ m \neq j  \\
+cov(Y_{ijk},Y_{imn}) &= \highlight{\sigma_U^2} \\
+\highlight{cov(Y_{ijk},Y_{ijn})} &= \highlight{\sigma_U^2 + \Gamma_{11} + (W_{ijk} + W_{imn}) \Gamma_{12} + W_{ijk}W_{imn}\Gamma_{22} + \sigma_A^2exp(- \frac{|t_{ijk} - t_{imn}|}{\phi})} \\
+& \text{Which is a subset of the last question} \\
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+\highlight{cov(Y_{ijk},Y_{ljk})} &= \highlight{0} \\
+& \text{If}\ i \neq l\ \text{due to the independence of individuals} \\
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+\highlight{var(Y_{ijk}|A,V)}
+&= Var(X_{ijk}\beta + U_i + V_{ij1} + V_{ij2}W_{ijk} + A_{ijk} + e_{ijk}|A,V) \\
+&= Var(U_i) \\
+&= \highlight{\sigma_U^2 + \tau^2} \\
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+\highlight{E(exp(Y_{ijk}))} &= \text{This is a lognormal distribution with parameters}\ \mu_{ijk} \text{and}\ \tau^2 \\
+&\text{We must consider the additivity of the variances of the}\ U_i,\ V_{ij1},\ V_{ij2},\ \&\ A_{ijk} \\
+&= \highlight{exp(X_{ijk}\beta + \frac{\tau^2 + \sigma_U^2 + \sigma_A^2 + \Gamma_{11} + 2W_{ijk}\Gamma_{12} + W_{ijk}^2\Gamma_{22}}{2})}
+\end{aligned}
+$$
+
+
+3. If $W_{ijk} \sim 1000$ - $3000$ then $\sigma_U^2$ and $\sigma_A^2$ become insignificant.  A more suitable model is therefore: \
+
+$$
+\begin{aligned}
+Y_{ijk}|V &\sim N(\mu_{ijk}, \tau^2) \\
+\mu_{ijk} &= X_{ijk}\beta + V_{ij1} + V_{ij2}W_{ijk} \\
+\text{where}\ (V_{ij1},V_{ij2})' &\sim MVN(0,\Gamma)
+\end{aligned}
+$$
+
+# Question 2 (Math)
+
+
+```{r Math, include=FALSE}
+library(MEMSS)
+data("MathAchieve", package = "MEMSS")
+head(MathAchieve)
+```
+The decision on whether or not to treat school as a random or fixed effect may depend on whether or not we wish to generalize our results to all schools, or only the schools in this data set.  Using random effects allows for generalization to all schools.  
+
+In this example we are looking at the effect of school over many samples of a population (160 schools). This would not be an exhaustive list of all schools and we can assume this effect is not correlated with the Sex, Minority status, or SES of a student.
+
+```{r Random Effects Math, include=FALSE}
+library("nlme")
+
+schoollme <- lme(MathAch ~ Minority + Sex + SES, random = ~1|School, data = MathAchieve, method = "ML")
+summary(schoollme)
+
+test <- summary(schoollme)
+```
+
+
+
+
+
+```{r, include=FALSE}
+library(lmtest)
+```
+
+```{r LR test,include=FALSE}
+nonrandschoollme <- lm(MathAch ~ Minority + Sex + SES, data = MathAchieve, method = "ML")
+
+```
+
+```{r, include=FALSE}
+schoollrtest <- lrtest(schoollme,nonrandschoollme)
+rownames(schoollrtest) <- c("With Random Effects","Without Random Effects")
+
+
+
+SchoolCItable <- data.frame(summary(schoollme)$tTable)
+SchoolCItable$`2.5%CI` <- SchoolCItable$Value - 1.96*SchoolCItable$`Std.Error`
+SchoolCItable$`97.5%CI` <- SchoolCItable$Value + 1.96*SchoolCItable$`Std.Error`
+
+
+drops <- c("Std.Error","DF","t.value")
+SchoolCItable <- SchoolCItable[ , !(names(SchoolCItable) %in% drops)]
+
+SchoolCItable <- SchoolCItable[ , c(1,3,4,2)]
+```
+
+
+
+```{r, include=FALSE}
+knitr::kable(SchoolCItable , caption = "Coefficients Modelling Math Scores With School As A Random Effect", digits = 3)
+```
+
+```{r, echo=FALSE}
+library(Pmisc)
+knitr::kable(Pmisc::lmeTable(schoollme), digits = 3,caption= "Coefficients Modelling Math Scores With School As A Random Effect", escape = FALSE)
+```
+
+
+Modelling school as a random effect we find that the minority status, sex, and SES were all significant predictors of the mathematics scores of the individuals.  It was found that male students were predicted to have scored on average 1.230 points higher than female students, minority students were found to have scored on average 2.962 lower than non-minority students, and for every additional point on the SES students were found to have scored on average 2.091 points higher.  The within school standard deviation $\tau$ was estimated to be 5.991, while the standard deviation between schools $\sigma$ was estimated to be 1.907.
+
+To test if the differences within schools are greater than can be explained by within school variation, we conduct a likelihood ratio test for the hypothesis of the variance for the random effects of school is 0. ($H_0: \sigma_U^2 = 0$)
+
+```{r, echo=FALSE, error=FALSE}
+knitr::kable(schoollrtest, caption = "Likelihood Ratio Test for Random Effects Inclusion", digits = c(3,3,3,3,83))
+```
+
+We see that even when accounting for the fact that we use this one-sided test (ie. multiplying the two-sided p-value by 2), the result is still significant.  The adjusted p-value was found to be $1.42 \times 10^{-80}$. Thus the variance between schools cannot solely be accounted for by the variance between individuals.  
+
+
+# Cystic Fibrosis Data
+
+Cystic Fibrosis is an autosomal recessive genetic disease which affects 1 in 3600 children born in Canada.  It is the most common fatal genetic disease affecting Canadian children.  Though the disease is known to be caused by a single gene, there may be other genetic factors affecting its severity.  This analysis seeks to discover if the F508 gene affects the lung function of individuals with Cystic Fibrosis.  Lung function in this study will be measured as FEV1, the volume of air which an individual can exhale in 1 second.  This analysis will account for age and gender effects, as those can affect the FEV1, as well as their interaction with the F508 gene.  Conclusions will be drawn from looking at three different models: A random intercept model, a random slope and a serial correlation model.  The first model treats the patient identifier as a random effect, meaning some individuals will naturally have a higher or lower FEV1 over all time, and these follow a normal distribution.  The second model expands upon this by introducing a random slope, meaning some individuals may have a slower or fast lung decline, which is also related to the random intercept by a multivariate normal distribution, where the age related lung decline is constant at the individual level.  The last model includes a random intercept but also includes a serial correlation between ages.  The correlation between ages in lung function is more closely related to their FEV1 at nearby ages. \
+
+```{r CF Initialize, include = FALSE}
+
+load(file = "CFdat.Rda")
+
+```
+
+
+The models in question can be expressed as following: 
+$$
+\begin{aligned}
+Y_{ij} &\sim N(\mu_{ij}, \tau^2) 
+\end{aligned}
+$$
+
+Model 1 (Random Intercept): 
+
+$$
+\begin{aligned}
+\mu_{ij} &= \beta_0 + \beta_1X_{ij1} + \beta_2X_{ij2} + \beta_3X_{ij3} + \beta_4X_{ij1}X_{ij2} + \beta_5X_{ij1}X_{ij3} + \\ &\beta_6X_{ij2}X_{ij3} + \beta_7X_{ij1}X_{ij2}X_{ij3} + \beta_8X_{ij4} + U_{i1}
+\end{aligned}
+$$
+
+Model 2 (Random Slope): 
+$$
+\begin{aligned}
+\mu_{ij} &= \beta_0 + \beta_1X_{ij1} + \beta_2X_{ij2} + \beta_3X_{ij3} + \beta_4X_{ij1}X_{ij2} + \beta_5X_{ij1}X_{ij3} + \\ &\beta_6X_{ij2}X_{ij3} + \beta_7X_{ij1}X_{ij2}X_{ij3} + \beta_8X_{ij4} + U_{i1} + U_{i2}X_{ij3}
+\end{aligned}
+$$
+
+Model 3 (Serial Correlation): 
+$$
+\begin{aligned}
+\mu_{ij} &= \beta_0 + \beta_1X_{ij1} + \beta_2X_{ij2} + \beta_3X_{ij3} + \beta_4X_{ij1}X_{ij2} + \beta_5X_{ij1}X_{ij3} + \\ &\beta_6X_{ij2}X_{ij3} + \beta_7X_{ij1}X_{ij2}X_{ij3} + \beta_8X_{ij4} + U_{i1} + A_{jk}
+\end{aligned}
+$$
+
+Where: 
+
+$$
+\begin{aligned}
+Y_{ij} &=\text{FEV1 Lung Function} \\
+X_{ij1} &=\text{Gender} \\
+X_{ij2} &=\text{F508 Genotype} \\
+X_{ij3} &=\text{Age (From 18 years Old)} \\
+X_{ij4} &=\text{Infection with Pseudomonas Aeruginosa} \\
+(U_{i1}\ , U_{i2})' &\stackrel{IID}{\sim}  MVN(0,\Gamma) \\
+U_{i1} &\stackrel{IID}{\sim} N(0,\sigma_U^2) \\
+\text{For the random intercept model}\  cov(A_{ij},A_{nk}) &= \delta_{in}\sigma_A^2exp(-\frac{|X_{ij3} - X_{nk3}|}{\phi}) \\
+\delta_{in}\  &\text{is the Kroenecker delta function}
+\end{aligned}
+$$
+
+The following output of parameter estimates for the second and third model were obtained.  
+```{r 3 Models, echo=FALSE}
+
+CFdat$ageC = CFdat$AGE - 18
+
+resS = lme(FEV1 ~ GENDER * F508 * ageC + PSEUDOA, random = ~1 |
+ID, data = CFdat, method = "ML") #Standard Random Intercept Model
+resRS = lme(FEV1 ~ GENDER * F508 * ageC + PSEUDOA, random = ~1 + ageC |
+ID, data = CFdat, method = "ML") #Random Slope Model
+resSC = lme(FEV1 ~ GENDER * F508 * ageC + PSEUDOA, random = ~1 |
+ID, data = CFdat, correlation = corExp(form = ~ageC|ID, nugget = T), method = "ML")
+#Serial Correlation Model
+#knitr::kable(summary(resS)$tTable, caption = "Random Intercept Model", digits = 3)
+RStable <- knitr::kable(summary(resRS)$tTable, caption = "Random Slope Model",digits = 3)
+SCtable <- knitr::kable(summary(resSC)$tTable, caption = "Serial Correlation Model",digits = 3)
+RSCItable <- data.frame(summary(resRS)$tTable)
+SCCItable <- data.frame(summary(resSC)$tTable)
+RSCItable$`2.5%CI` <- RSCItable$Value - 1.96*RSCItable$`Std.Error`
+RSCItable$`97.5%CI` <- RSCItable$Value + 1.96*RSCItable$`Std.Error`
+SCCItable$`2.5%CI` <- SCCItable$Value - 1.96*SCCItable$`Std.Error`
+SCCItable$`97.5%CI` <- SCCItable$Value + 1.96*SCCItable$`Std.Error`
+drops <- c("Std.Error","DF","t.value")
+RSCItable <- RSCItable[ , !(names(RSCItable) %in% drops)]
+SCCItable <- SCCItable[ , !(names(SCCItable) %in% drops)]
+RSCItable <- RSCItable[ , c(1,3,4,2)]
+SCCItable <- SCCItable[ , c(1,3,4,2)]
+```
+
+```{r,echo=FALSE}
+
+knitr::kable(RSCItable, caption = "Random Slope Model", digits = 3)
+knitr::kable(SCCItable, caption = "Serial Correlation Model", digits = 3)
+
+
+```
+
+All three models have some degree of similarities.  They all predict the FEV1 lung function of an individual, given the effects of their age, sex and F508 genotype, as well as interaction effects between the three.  Additionally the presence of an infection with Pseudomonas Aeruginosa is a linear variable established as a confounder.  All models also include a random effects term for each person.  In other words, a person with high lung function would be expected to have high lung function at some later age, and there would be some variance among the general population. This ensures generalizability of the results to the population of all individuals with cystic fibrosis rather than only the individuals in the study.  The first model assumes than all individuals will have the same response with the effect of age on lung function.  
+
+The second model expands upon this.  This model includes a random slope in the age of the individual.  Simply, the rate of decline of lung function over time varies between individuals in a normal distribution, but is constant within the individual across time provided all other factors such as Pseudomonas Aeruginosa infection remain constant.  This slope random effect is also related to the random intercept through their covariance. 
+
+Lastly, the third model involves a serial correlation. This assumes that there is a correlation of the lung function at one time and another time which is exponentially decreasing within an individual.  The effect of age within an individual is no longer required to be constant.  Explicitly we may state: 
+
+$$
+\begin{aligned}
+cov(A_{ij},A_{nk}) &= \delta_{in}\sigma_A^2exp(-\frac{|X_{ij3} - X_{nk3}|}{\phi})
+\end{aligned}
+$$
+
+The serial correlation model is more general than the random slope model which is more general than the random intercept model.  All models include the usual assumptions of a linear model: a linear relationship, multivariate normality, no or little multicollinearity, no auto-correlation and homoscedasticity.  \
+
+The Akaike information criterion (AIC) is a measure of the quality of a statistical model for a given set.  The model with the lowest AIC "minimizes" the information lost and is thus the most probable model.
+```{r AIC For Models, include=FALSE}
+AICtable <- data.frame(Model = c("Random Intercept", "Random Slope", "Serial Correlation"), AIC = c(12531.65, 12444.77, 12382.48))
+```
+
+```{r AICtable, echo=FALSE}
+knitr::kable(AICtable, caption = "Models and AIC Values", digits = 2)
+```
+
+Since the minimum AIC is achieved with the serial correlation model, it will be used for the analysis.
+
+```{r Plot For CF Model Int, include=FALSE}
+CFPlot1 = data.frame(x=CFdat$ageC,y=resS$fitted[,'ID'],ID=CFdat$ID)
+SCF = sample(unique(CFPlot1$ID),8)
+names(SCF) = RColorBrewer::brewer.pal(length(SCF),"Set2")
+CFPlotRandInt <- plot(CFPlot1$x, CFPlot1$y, xlab='Age from 18 years', ylab='Lung Function', type='n', main= "Random Intercept Model")
+  invisible(by(CFPlot1, CFdat$ID,lines, col='#00000020'))
+for(D in 1:length(SCF))lines(CFPlot1[CFdat$ID == SCF[D],c('x','y')],col = names(SCF)[D], lwd=2)
+
+```
+
+
+
+
+```{r,echo=FALSE,out.width='.49\\linewidth', fig.width=4, fig.height=4}
+CFPlot2 = data.frame(x=CFdat$ageC,y=resRS$fitted[,'ID'],ID=CFdat$ID)
+SCF = sample(unique(CFPlot2$ID),8)
+names(SCF) = RColorBrewer::brewer.pal(length(SCF),"Set2")
+CFPlotRandSlope <- plot(CFPlot2$x, CFPlot2$y, xlab='Age from 18 years', ylab='Lung Function', sub = "FEV1 Lung Function Prediction Over Age From Random Slope Model" ,type='n', main= "Random Slope Model",cex.sub=0.6)
+invisible(by(CFPlot2, CFdat$ID,lines, col='#00000020'))
+for(D in 1:length(SCF))lines(CFPlot2[CFdat$ID == SCF[D],c('x','y')],col = names(SCF)[D], lwd=2)
+
+
+CFPlot3 = data.frame(x=CFdat$ageC,y=resSC$fitted[,'ID'],ID=CFdat$ID)
+SCF = sample(unique(CFPlot3$ID),8)
+names(SCF) = RColorBrewer::brewer.pal(length(SCF),"Set2")
+CFPlotSerCor <-plot(CFPlot3$x, CFPlot3$y, xlab='Age from 18 years', ylab='Lung Function', sub = "FEV1 Lung Function Prediction Over Age From Serial Correlation Model" , type='n', main= "Serial Correlation Model",cex.sub=0.6)
+invisible(by(CFPlot3, CFdat$ID,lines, col='#00000020'))
+for(D in 1:length(SCF))lines(CFPlot3[CFdat$ID == SCF[D],c('x','y')],col = names(SCF)[D], lwd=2)
+```
+
+
+The research hypotheses were the following: \
+  1. the rate at which lung function declines for CF patients depends on the F508 gene; \
+and \
+  2. the effect of the F508 gene on lung function decline differs for females and males. \
+
+A likelihood ratio test can be applied to test these hypotheses.  The results are displayed below.  
+```{r, echo=FALSE}
+SerialCorrelationLME = lme(FEV1 ~ GENDER * F508 * ageC + PSEUDOA, random = ~1 |
+ID, data = CFdat, correlation = corExp(form = ~ageC|ID, nugget = T), method = "ML")
+SerialCorrelationLMENoGenderEffect = lme(FEV1 ~ GENDER  +  ageC:GENDER + F508 * ageC + PSEUDOA, random = ~1 |
+ID, data = CFdat, correlation = corExp(form = ~ageC|ID, nugget = T), method = "ML")
+SerialCorrelationLMENoGenderOrAgeEffect = lme(FEV1 ~ GENDER  +  ageC:GENDER + F508 + ageC + PSEUDOA, random = ~1 |
+ID, data = CFdat, correlation = corExp(form = ~ageC|ID, nugget = T), method = "ML")
+
+CFLRtest <- lrtest(SerialCorrelationLME,SerialCorrelationLMENoGenderEffect,SerialCorrelationLMENoGenderOrAgeEffect)
+rownames(CFLRtest) <- c("Full Model", "No Combination Gender, Age, F508 Interaction","No Age, F508 Interaction")
+knitr::kable(CFLRtest, caption = "Likelihood Ratio Test for F508 Gene Factor in Serial Correlation Model", digits = 3)
+
+```
+
+As seen in \textbf{table 6.} using the serial correlation model, there is no significant effect of the F508 gene on the rate of age, nor was a difference found between genders FEV1 function over time. Thus we cannot confirm the F508 gene had a function on the rate of lung function decline.  It is noteworthy however that the significance of the coefficients of the interaction between the F508 gene and age were significant at the $\alpha =0.05$ level.  When comparing to a person who is homozygous with the F508 gene, a heterozygous individual was found to have lung function decline of 0.981 FEV1 units per year ($95\%\ CI = [0.040,1.923]$) less than the homozygous positive case ($p = 0.041$). An individual which had no F508 gene was found to have lung function decline of 1.457 FEV1 units per year ($95\%\ CI = [0.001,2.914]$) less than the homozygous positive case ($p = 0.05$).  Both of these intervals nearly overlapped 0, and thus these effects were not confirmed by a likelihood ratio test ($p = 0.385$, \textbf{table 6.}).  There may be an effect that more copies of the F508 gene cause a faster lung function decline, however this may be worth further investigation.
+
+
+
+# Moss in Galicia
+
+1. A two dimensional spatial model is used according to the following. 
+$Y_i$ is the box-cox transformation of the measurement of lead in the soil at a particular location based on the population of the area, rainfall per year, and predominant soil type.  
+
+$$
+\begin{aligned}
+Y_i &\sim N[\lambda(s_i),\tau^2] \\
+\lambda(s_i) &= \mu + \beta_1 X_{log(\text{Pop})} + \beta_2 X_{\text{Rain}} + \beta_3 X_{\text{Soil}} + U(s_i) \\
+\text{where}\ Cov(U(s_i), U(s_i + h)) &= \sigma^2\rho(h/\phi,\nu) \\
+\text{where}\ \rho\  \text{is the Matérn family function}\ & \text{with range parameter}\ \phi\ \text{and shape parameter}\ \nu. 
+\end{aligned}
+$$
+
+2.  It does not seem plausible that rain or soil type influence the lead content in the moss in Galicia.  This is due to the fact that the displayed 95% confidence intervals for these variables overlap with 0, indicating that there is a greater than 5% chance that the the estimates are due to chance assuming a normal distribution of the variable.  This was true for the continuous variable of rain as well as each of the soil types.  Additionally, using the method of the likelihood ratio test, the P value obtained for the nested model without these parameters was $0.0919$ which is greater than the usual $\alpha = 0.05$ threshold.  
+
+
+3.  Population was found to have a significant effect on the lead levels of the Moss in Galicia.  Though the 95% confidence interval for the coefficient of the logarithm of the population overlapped 0. the likelihood ratio test however, when compared against the nested model without this parameter, gave a p-value of $0.00553$.  This suggests that the improvement of prediction from including the parameter is significant when compared to a model without this parameter.
+
+
+4.  The second order statistical properties of the lead in Galicia are the variances associated with the model. This includes the observation variance ($\tau^2$) and residual spatial variation $\sigma^2$.  In this case it was estimated that the observation variance was $0.04$ with a 95% confidence interval of $[0.00,65.22]$ and a residual spatial variation of $0.25$ and a 95% confidence interval of $[0.18,0.35]$.  Additionally, in the model, it was set that the shape parameter of the correlation is 1, as well as an isotropic correlation.  The observation variance is the error associated with the measurement of lead or very localized factors.  It was found that there was a lower effect of the total variance of the data from the model, however there is a large variation in this estimate, when considering the 95% CI of this measurement there may in fact be a larger error in measurement or local factors.  The range parameter was found to be $34.22\ km$. This indicates that the correlation in soil location was found to be effective on the order of $35\ km$.  
+
+
+

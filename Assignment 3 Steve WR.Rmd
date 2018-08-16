@@ -1,0 +1,606 @@
+---
+title: "Assignment 3"
+author: "Steve Wilkins-Reeves"
+date: '2018-04-02'
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+header-includes: \usepackage{xcolor}
+fig_width: 2.5
+---
+\newcommand{\highlight}[1]{%
+  \colorbox{red!50}{$\displaystyle#1$}}
+  
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Non-Parametrics
+The Scripps $CO_2$ Program was initiated by in 1956 by Charles David Keeling.  This program involved sampling $CO_2$ from the Mauna Loa Observatory in Hawaii.  The four hypotheses under consideration involving atmospheric $CO_2$ include: \
+
+1. Although carbon in the atmosphere is still increasing, there are indications that the increase has slowed somewhat recently. \
+
+2. The data are consistent with carbon slowing during the global economic recessions around 1980-1982 and 1990 \
+
+3. Carbon tends to be higher in October than March. \
+
+4. Carbon will likely exceed 400 parts per gallon by 2020. \
+
+Assessing the concerns of the hypothesis the following model is used. \
+
+$$
+\begin{aligned}
+Y_i &\sim N(\mu_i,\sigma^2) \\
+\mu_i &= \beta_0 + \beta_{cos12}cos(2\pi\frac{X_{days}}{365.25}) + \beta_{sin12}sin(2\pi\frac{X_{days}}{365.25}) + \\
+&\beta_{cos6}cos(4\pi\frac{X_{days}}{365.25}) + \beta_{sin6}sin(4\pi\frac{X_{days}}{365.25}) + f(X_{days};\nu)
+\end{aligned}
+$$
+
+Here we include 12 and 6 month periodic trends captured by the sine and cosine functions in the model, as well as a smoothing thin plate regression spline function over time $X_{days}$ with smoothing parameter $\nu$ degrees of freedom, and intercept $\beta_0$.  
+
+We obtain the following plots from the model, with the degrees of freedom of the smoothing spline $\nu$ equal to 9.   
+
+
+```{r First Question Plots, figs, fig.cap="CO2 and Smoothing Model Trends.  Prediction Displayed in Black With 95% Confidence Intervals in Red", echo=FALSE, error=FALSE, results=FALSE, warning=FALSE}
+library('nlme')
+library('mgcv')
+par(mfrow=c(1,2))
+cUrl = paste0("http://scrippsco2.ucsd.edu/assets/data/atmospheric/",
+"stations/flask_co2/daily/daily_flask_co2_mlo.csv")
+cFile = basename(cUrl)
+if (!file.exists(cFile)) download.file(cUrl, cFile)
+co2s = read.table(cFile, header = FALSE, sep = ",", skip = 69,stringsAsFactors = FALSE, col.names = c("day", "time","junk1", "junk2", "Nflasks", "quality", "co2"))
+co2s$date = strptime(paste(co2s$day, co2s$time), format = "%Y-%m-%d %H:%M",tz = "UTC")
+# remove low-quality measurements
+co2s[co2s$quality > 2, "co2"] = NA
+plot(co2s$date, co2s$co2, log = "y", cex = 0.3, col = "#00000040", main = "Collected CO2 Data",
+xlab = "time", ylab = "ppm")
+#plot(co2s[co2s$date > ISOdate(2015, 3, 1, tz = "UTC"), c("date","co2")], log = "y", type = "o", xlab = "time", ylab = "ppm",cex = 0.5)
+
+timeOrigin = ISOdate(1980, 1, 1, 0, 0, 0, tz = "UTC")
+co2s$days = as.numeric(difftime(co2s$date, timeOrigin, units = "days"))
+co2s$cos12 = cos(2 * pi * co2s$days/365.25)
+co2s$sin12 = sin(2 * pi * co2s$days/365.25)
+co2s$cos6 = cos(2 * 2 * pi * co2s$days/365.25)
+co2s$sin6 = sin(2 * 2 * pi * co2s$days/365.25)
+#Here we change from a simple linear model to a GAM 
+cLm = gam(co2 ~ cos12 + sin12 + cos6 + sin6 + s(days), data = co2s)
+#We want to remove seasonal effects and look at the underlying trend 
+
+summary(cLm)$coef[, 1:2]
+newX = data.frame(date = seq(ISOdate(1990, 1, 1, 0, 0, 0,tz = "UTC"), by = "1 days", length.out = 365 * 30))
+newX$days = as.numeric(difftime(newX$date, timeOrigin, units = "days"))
+newX$cos12 = cos(2 * pi * newX$days/365.25)
+newX$sin12 = sin(2 * pi * newX$days/365.25)
+newX$cos6 = cos(2 * 2 * pi * newX$days/365.25)
+newX$sin6 = sin(2 * 2 * pi * newX$days/365.25)
+coPred = predict.gam(cLm, newX, se.fit = TRUE)
+
+
+
+coPred = data.frame(est = coPred$fit, lower = coPred$fit - 2 * coPred$se.fit, upper = coPred$fit + 2 * coPred$se.fit)
+#Takes simply the smoothing function part of the model
+coPredNoSeason = coPred - as.numeric(cLm$coefficients[2])*newX$cos12 - as.numeric(cLm$coefficients[3])*newX$sin12 - as.numeric(cLm$coefficients[4])*newX$cos6 - as.numeric(cLm$coefficients[5])*newX$sin6
+
+plot(newX$date, coPred$est, type = "l", main = "Model Predicted CO2 Data", xlab = "time", ylab = "ppm")
+matlines(as.numeric(newX$date), coPred[, c("lower", "upper","est")], lty = c(3,3,1), col = c("red", "red", "black"))
+```
+
+
+```{r More First Question Plots, figs, fig.cap="CO2 and Smoothing Model Trends.  Prediction Displayed in Black With 95% Confidence Intervals in Red", echo=FALSE, error=FALSE, results=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+plot(newX$date, coPredNoSeason$est, type = "l", main = "Underlying Trend",xlab = "time", ylab = "ppm")
+matlines(as.numeric(newX$date), coPredNoSeason[, c("lower", "upper","est")], lty = c(3,3,1), col = c("red", "red", "black"))
+
+newX = newX[1:365, ]
+
+newX$days = 0
+plot(newX$date, as.numeric(cLm$coefficients[2])*newX$cos12 + as.numeric(cLm$coefficients[3])*newX$sin12 + as.numeric(cLm$coefficients[4])*newX$cos6 + as.numeric(cLm$coefficients[5])*newX$sin6, main = "Seasonal Trend Only",xlab = "time", ylab = "ppm") #Plotting only seasonal terms.  
+
+```
+
+In order to address the hypotheses in question the derivative of the underlying smoothing trend must be computed. 
+
+
+```{r First Question Even More Plots, figs, fig.cap="CO2 and Smoothing Model Derivative Trends.  Prediction Displayed in Black With 95% Confidence Intervals in Red", echo=FALSE, error=FALSE}
+# Methods for plotting derivatives are taken from ?predict.gam
+## now evaluate derivatives of smooths with associated standard errors, by finite differencing...
+## where to evaluate derivatives
+newX0 = data.frame(date = seq(ISOdate(1970, 1, 1, 0, 0, 0,tz = "UTC"), by = "1 days", length.out = 365 * 50))
+newX0$days = as.numeric(difftime(newX0$date, timeOrigin, units = "days"))
+newX0$cos12 = cos(2 * pi * newX0$days/365.25)
+newX0$sin12 = sin(2 * pi * newX0$days/365.25)
+newX0$cos6 = cos(2 * 2 * pi * newX0$days/365.25)
+newX0$sin6 = sin(2 * 2 * pi * newX0$days/365.25)
+
+
+#newd <- newX0
+X0 <- predict.gam(cLm, newX0, se.fit = TRUE, type = "lpmatrix")
+#X0 <- predict(cLm,newd,type="lpmatrix") 
+
+eps <- 1 ## finite difference interval (in this case it is oneday)
+# We shift the evaluation of the derivative to the next day
+newX1 = data.frame(date = seq(ISOdate(1970, 1, 1, 0, 0, 0,tz = "UTC"), by = "1 days", length.out = 365 * 50 + 1)) #We add another row to this data set
+newX1$days = as.numeric(difftime(newX1$date, timeOrigin, units = "days"))
+newX1$cos12 = cos(2 * pi * newX1$days/365.25)
+newX1$sin12 = sin(2 * pi * newX1$days/365.25)
+newX1$cos6 = cos(2 * 2 * pi * newX1$days/365.25)
+newX1$sin6 = sin(2 * 2 * pi * newX1$days/365.25)
+
+
+newX1 <- newX1[!newX1$date == newX1$date[1],] #We remove the first row so that the dimensions agree
+
+
+#X1 <- predict(cLm,newd,type="lpmatrix")
+X1 <- predict.gam(cLm, newX1, se.fit = TRUE, type = "lpmatrix")
+
+eps <- 1 ## finite difference interval (in this case it is oneday)
+
+
+
+#X2 <- predict(cLm,newd,type="lpmatrix") #Third point for estimation of the second derivative
+
+Xp <- (X1-X0)/eps ## maps coefficients to (fd approx.) derivatives
+#Xpp <- (X2 - 2*X1 + X0)/(eps^2)  ## Approximating Second Derivative 
+
+
+
+
+#We change the length of the new X back to the original
+#newX = data.frame(date = seq(ISOdate(1970, 1, 1, 0, 0, 0,tz = "UTC"), by = "1 days", length.out = 365 * 50))
+
+#newX$days = as.numeric(difftime(newX$date, timeOrigin, units = "days"))
+#newX$cos12 = cos(2 * pi * newX$days/365.25)
+#newX$sin12 = sin(2 * pi * newX$days/365.25)
+#newX$cos6 = cos(2 * 2 * pi * newX$days/365.25)
+#newX$sin6 = sin(2 * 2 * pi * newX$days/365.25)
+
+par(mfrow=c(1,2))
+
+## plot derivatives and corresponding CIs
+
+Xi <- Xp*0 
+Xi[,6:14] <- Xp[,6:14] ## Xi%*%coef(b) = smooth deriv i Changed to offset to 5 so that only smoothing terms are included
+df <- 365.25*Xi%*%coef(cLm)              ## ith smooth derivative Adjusted for year scale
+df.sd <- 365.25*rowSums(Xi%*%cLm$Vp*Xi)^.5 ## cheap diag(Xi%*%b$Vp%*%t(Xi))^.5
+plot(newX0$date,df,type="l",ylim=range(c(df+2*df.sd,df-2*df.sd)), main = "Derivative of Smooth Trend",xlab = "time", ylab = "Change in ppm per Year")
+lines(newX0$date,df+2*df.sd,lty=3,col = "red");lines(newX0$date,df-2*df.sd,lty=3, col = "red")
+
+
+plot(newX0$date,df,type="l",ylim=range(c(df+2*df.sd,df-2*df.sd)),xlim = range(c(ISOdate(1975, 1, 1, 0, 0, 0,tz = "UTC"),ISOdate(1995, 1, 1, 0, 0, 0,tz = "UTC"))) ,main = "Derivative (1975-1995)",xlab = "time", ylab = "Change in ppm per Year")
+lines(newX0$date,df+2*df.sd,lty=3,col = "red");lines(newX0$date,df-2*df.sd,lty=3, col = "red")
+
+
+
+##Need to include second derivative, zoom in on plots from 1979-1991
+
+```
+
+
+
+## Summary of Results
+
+After fitting the smoothing model, and computing the derivative and confidence interval of the underlying trend after removal of seasonal variation, we find that the carbon in the atmosphere is increasing.  The increase may have slowed, however the confidence interval on the rate of increase indicates that this cannot be confirmed. 
+
+From the underlying smoothed trend, we find that carbon emissions rate of increase is low from 1980-1982, however prior to this time, the rate of increase was also low.  It can be seen that there is a decrease in the increase of the rate of emissions after 1990.  
+
+
+Thirdly, it is observed from modelling the data there is a trend in which carbon tends to be lower in October than March as seen in figure 1.  
+
+
+Lastly, we find that including the underlying trend surpasses 400 ppm by 2020.  Additionally, even when we include regular seasonal variation, the carbon levels are still predicted to be above 400 ppm.  
+
+In future considerations, time series models may be an appropriate methodology for approaching these hypotheses.  
+
+
+
+
+# Math
+
+
+```{r Math, include=FALSE}
+library(MEMSS)
+data("MathAchieve", package = "MEMSS")
+Mathdat <- MathAchieve
+```
+First we remove negative scores.
+```{r, include=FALSE}
+Mathdat <- Mathdat[! Mathdat$MathAch <0, ]
+```
+
+```{r Random Effects Normal test, fig.cap="QQ Plot for Math Scores, Apparent Left Skew", echo=FALSE}
+
+qqnorm(Mathdat$MathAch, main = "Normal Q-Q Plot For Math scores", ylab = "Score Sample Quantiles")
+qqline(Mathdat$MathAch)
+```
+
+We clearly have a well-defined left skew even after removal of the erroneous negative data. Observing a quick histogram can give us insight in to the structure of the data and an appropriate GLM to use.  
+
+```{r Exploring the Math Data, fig.cap="Density And Histogram of Math Scores", echo=FALSE}
+par(mfrow=c(1,2))
+plot(density(Mathdat$MathAch), main = "Density Estimation of Math Scores", xlab = "Math Scores")
+hist(Mathdat$MathAch, main = "Math Scores Histogram", xlab = "Math Scores")
+
+```
+
+The data suggests that this is a continuous distribution with positive support.  This suggests a gamma generalized linear model may be appropriate for this data. The following model will be used.  
+
+
+$$
+\begin{aligned}
+Y_i &\sim Gamma(\frac{\lambda_i}{\nu},\nu) \\
+\lambda_{ij} &= \beta_0 + \mathbf{X_{ij}\beta} + U_j \\
+U_j &\sim N(0,\sigma^2_U)
+\end{aligned}
+$$
+Here $Y_i$ is the math score, distributed with the gamma shape parameter $\nu$, $\mathbf{X_{ij}}$ is a vector of covariates including the minority status, socioeconomic status and their interaction effects, and the school random effect $U_j$.  
+
+```{r School GLM Gamma, echo=FALSE, warning=FALSE, include=FALSE}
+library("glmm")
+SchoolModel <- glmer(MathAch ~ Minority*SES + Sex + (1|School), family = Gamma(link = "log"), data =  Mathdat)
+
+#schoollme <- lme(MathAch ~ Minority + Sex + SES, random = ~1|School, data = MathAchieve, method = "ML")
+#summary(SchoolModel)
+SchoolModelX <- Mathdat[,!colnames(Mathdat) %in% c("MathAch","MEANSES")]
+#SchoolModelX2 <- Mathdat[,!colnames(Mathdat) %in% c("MathAch","MEANSES")]
+
+
+##Test Scores Prediction for 95% interval
+testscores <- predict(SchoolModel, SchoolModelX)
+testscorestypical <- predict(SchoolModel, SchoolModelX, re.form=~0)
+schoolav <- c()
+
+for(s in unique(Mathdat$School)){
+  schooldat <- Mathdat[Mathdat$School == s,]
+  schoolav <- c(schoolav,mean(schooldat$MathAch))
+}
+
+TestFrame <- data.frame(`2.5% Quantile`=numeric(),
+                 `97.5% Quantile`=numeric())
+
+TestFrame <- rbind(TestFrame,quantile(schoolav, probs = c(0.025,0.975)))
+TestFrame <- rbind(TestFrame,exp(quantile(testscorestypical, probs = c(0.025,0.975))))
+colnames(TestFrame) <- c("2.5% Quantile","97.5% Quantile")
+rownames(TestFrame) <- c("School Average","Typical School")
+```
+
+```{r, echo=FALSE}
+knitr::kable(TestFrame, row.names = T, digits = 3, caption = "95% intervals")
+```
+
+Therefore since we find the 95% quantile interval of averages in schools, we find that there is a difference between schools that is greater than can be explained by within school variation.  
+
+```{r, echo=FALSE, warning=FALSE}
+library(INLA)
+Mathdat$ScaleScores <- Mathdat$MathAch/25
+formula <- ScaleScores ~ Minority*SES + f(School, model="iid")
+result <- inla(formula, family = "beta", data = Mathdat)
+result <- inla.hyperpar(result)
+#summary(result)
+MathDistribution <- inla(formula, family = "beta", data = Mathdat)
+MathDistributionSum <- MathDistribution$summary.fixed
+# Go To Office Hour 
+
+#Hint: find a 95% interval for test scores of students in the baseline category in a ‘typical’n school (with random effect of zero). Compare this to a 95% interval for the school average test scores (on the natural scale, not log scale).
+
+#x <- seq(0,1,length.out = 1000)
+#plot(MathDistribution$marginals.fixed$x, type = "l", xlab = "ScaledMathscores", ylab = "Posterior Density", xlim = c(0, 1))
+#abline(v = MathDistributionSum[c(3, 5)], lty = 2)
+ #FEV1 ~ GENDER * F508 * ageC + PSEUDOA, random = ~1 |ID,
+```
+
+Lastly we find that the precision parameter for school had a 95% CI of [8.644,15.334].  This suggests that there is in fact a school effect beyond within school variation.  
+
+
+# Moss in Galicia Redux
+
+1. A two dimensional spatial model is used according to the following. 
+$Y_i$ is the measurement of lead in the soil at a particular location based on the population of the area, rainfall per year, and predominant soil type.  
+
+$$
+\begin{aligned}
+Y_i &\sim Gamma[\frac{\lambda(s_i)}{\nu_{\Gamma}},\nu_{\Gamma}] \\
+\lambda(s_i) &= \beta_0 + \beta_1 X_{log(\text{Pop})} + \beta_2 X_{\text{Rain}} + \beta_3 X_{\text{Soil}} + U(s_i) \\
+\text{where}\ Cov(U(s_i), U(s_i + h)) &= \sigma^2\rho(h/\phi,\nu) \\
+\text{where}\ \rho\  \text{is the Matérn family function}\ & \text{with range parameter}\ \phi\ \text{and shape parameter}\ \nu. \\
+&\nu_{\Gamma}\ \text{is the shape parameter of the generalized linear model}
+\end{aligned}
+$$
+
+The $\beta$ coefficients are associated with their respective linear parameters and the intercept of the model. \
+
+This is also a Bayesian model in which a PC (penalized complexity) prior was used for the $\sigma^2$ and $\nu_{\Gamma}$ parameters.  \
+
+From figure 5 (in the assignment), we can estimate the 95% prior intervals to be the following: 
+
+
+
+```{r, echo=FALSE}
+Parameter <- c("range","sd","gamma shape")
+`2.5 CI` <- c(5,0,3)
+`97.5 CI` <- c(50,0.7,Inf)
+
+PosTable <- data.frame(Parameter,`2.5 CI`,`97.5 CI`)
+#rbind(PosTable, c("range",5,50)) 
+#rbind(PosTable, c("sd",0,0.7))
+#rbind(PosTable, c("gamma shape",3,Inf))
+colnames(PosTable) <- c("Parameter","2.5 CI","97.5 CI")
+knitr::kable(PosTable , caption = "Table of Credibility Intervals of Priors", digits = 1)
+```
+
+This also includes the transformation of the gamma shape when displayed in the prior.  \
+
+2. Based on the 95% credibility intervals, it appears that the population influences the lead levels, and though the credibility interval for the rain coefficient overlaps 0, it only narrowly does and likely has an effect. \
+
+3. We can display the Box-Cox transformed data, as well as the gamma transformed data from homework 2 and 3 respectively as seen in figure 6. The data seems to match the Box-Cox transformed distribution due to the heavier tails. \
+
+```{r Moss In Galicia, echo=FALSE, warning=FALSE, include=FALSE}
+library('geostatsp')
+load(file="mossRes.RData")
+```
+
+```{r Moss In Galicia Model, echo=FALSE, include=FALSE, warning=FALSE}
+library(rmutil)
+#head(mossRes$inla$.args$data)
+LeadEmp <- density(mossRes$inla$.args$data$lead)
+ylead <- mossRes$inla$.args$data$lead
+LeadBoxCox <- dboxcox(y= ylead, m = mean(ylead), s = sd(ylead), f = -0.52 )
+plot(LeadEmp)
+plot(ylead, LeadBoxCox)
+
+```
+
+```{r Plotting Predicted Data, fig.cap= "Comparison Of Lead Distribution and Models", echo=FALSE}
+par(mfrow = c(1,3))
+x = read.table("http://www.lancaster.ac.uk/staff/diggle/APTS-data-sets/lead2000_data.txt", header = TRUE, skip = 3)
+xObs <- x[,"z"]
+hist(xObs[xObs < 10], breaks = 50, main = "Observed Lead Data", xlab= "Lead Level")
+simObs <- sample(xObs, 1e+05, replace = TRUE)
+#Simulate sampling from the data set to scale appropriately for display.  
+
+xNorm = rnorm(1e+05, mean = 0.34 + log(500) * 0.06, sd = 0.25)
+xBc = (xNorm * (-0.62) + 1)^(-1/0.62)
+hist(xBc[xBc < 10], breaks = 50, main = "Box Cox Lead Model", xlab= "Lead Level")
+
+linearPredictor = rnorm(1e+05, mean = -0.2864 + log(500) * 0.0882,
+sd = 0.4224)
+
+lambda = exp(linearPredictor)
+shape = 262.9
+
+gammaScale = lambda/shape
+
+xGam = rgamma(length(lambda), shape = shape, scale = gammaScale)
+
+hist(xGam[xGam < 10], breaks = 50, main = "Gamma Lead Model", xlab= "Lead Level")
+```
+
+
+4. Both models attempt to explain the variation in the lead in the soil based on the population, soil type and rain of the area in Galicia using a spatially correlated model.  The homework 2 model however firstly assumes a normal distribution (with a Box-Cox transformation of -0.52) and the homework 3 example uses a gamma distribution.  The Homework 2 model additionally is a frequentist model, while the Homework 3 approaches it from a Bayesian perspective and uses a prior.  This can be used to incorporate prior knowledge about a situation into a model.  In order to test whether particular covariates are suitable predictors in a model, a likelihood ratio test was used in Homework 2, this found that the model which incorporated spatial variation and the population was the most appropriate, and thus rain and soil type did not have an effect on the lead levels.  In Homework 3's Bayesian model, population was a significant predictor, and though rain was found to be an insignificant predictor according to the 95% credibility region [-0.0001,0.0021] it was nearly significant, and may worth still being considered in the model.  Additionally, the range parameter changed from $30.91\ km$ to $34.40\ km$, and the spacial variance from $0.25$ to $0.4224$.  I prefer the second model in this case,  because working with non-negative data (lead levels) it seems to be a more appropriate model. Additionally the simplicity of interpreting the significance of the model parameters is convenient in the Bayesian model.  
+
+
+# Application
+
+
+
+```{r Smoking Problem, include=FALSE}
+
+
+dataDir = "../data"
+smokeFile = file.path(dataDir, "smokeDownload.RData")
+if (!file.exists(smokeFile)) {
+download.file("http://pbrown.ca/teaching/astwo/data/smoke.RData", smokeFile)
+}
+(load(smokeFile))
+```
+
+
+```{r, echo=FALSE, warning=FALSE, include=FALSE}
+forInla = smoke[, c("Age", "Age_first_tried_cigt_smkg",
+"Sex", "Race", "state", "school", "RuralUrban")]
+forInla = na.omit(forInla)
+forInla = as.list(forInla)
+library("INLA")
+library("sp")
+library('survival')
+forSurv = data.frame(time = (pmin(forInla$Age_first_tried_cigt_smkg,
+forInla$Age) - 4)/10, event = forInla$Age_first_tried_cigt_smkg <=
+forInla$Age)
+# left censoring 
+forSurv[forInla$Age_first_tried_cigt_smkg == 8, "event"] = 2
+
+forInla$y = inla.surv(forSurv$time, forSurv$event)
+fitS2 = inla(y ~ RuralUrban + Sex * Race + Race:RuralUrban + f(school, model = "iid", #Added interaction of Race and Rural urban status to specify the effect on white students.  
+hyper = list(prec = list(prior = "pc.prec", param = c(0.12326,0.1)))) + f(state, model = "iid", hyper = list(prec = list(prior = "pc.prec",
+param = c(0.33397, 0.1)))), control.family = list(variant = 1,
+hyper = list(alpha = list(prior = "normal", param = c(5/2,(1.170)^(-2))))), data = forInla, family = "weibullsurv",
+control.compute=list(config = TRUE)) #For prediction of posterior later
+
+#rbind(fitS2$summary.fixed[, c("mean", "0.025quant", "0.975quant")],Pmisc::priorPostSd(fitS2)$summary[, c("mean", "0.025quant","0.975quant")])
+
+
+```
+
+
+
+
+## Introduction
+Smoking and tobacco use is a major concern for the public and medical professionals.  Health consequences such as increased rates of cancer are considered general knowledge about such products, however despite this knowledge, many individuals continue to use such products.  Tobacco use habits most often begin prior to the legal age of purchase in many countries, (18- 21 depending on the state) and thus some health researchers and physicians consider tobacco use a pediatric disease. The 2014 American National Youth Tobacco Survey (NYTS2014) seeks to investigate the tobacco use habits of American middle and high school students.  This report will seek to answer the following questions.  Firstly, are the geographic variations (between states) in the mean age that children first try cigarettes greater than the variation between schools? Secondly, does cigarette smoking have a flat hazard function?  In other words, is the risk of a child beginning smoking in the next month independent of age, given the known confounders of sex, rural/urban status, ethnicity, school and state are the same? Additionally, we wish to convey the difference between white urban males and white rural males in their smoking uptake habits.  
+
+
+
+## Methods
+The survey data provides self-reported nationally representative data about middle and high school students' tobacco use habits.  In particular, we are interested in the time that a student begins smoking.  The time until initiating smoking is modeled as a survival analysis.  The data is both left and right censored using the following model: \
+
+$$
+\begin{aligned}
+Z_{ijk} | Y_{ijk},\ A_{ijk} &= min(Y_{ijk},A_{ijk}) \\
+E_{ijk} | Y_{ijk},\ A_{ijk} &= I(Y_{ijk} < A_{ijk}) + 2I(Y_{ijk} \leq 8) \\
+Y_{ijk} &\sim Weibull[\lambda_{ijk}, \alpha] \\
+\lambda_{ijk} &= exp(-\eta_{ijk}) \\
+\eta_{ijk} &= \mu + X_{ijk}\beta + U_{jk} + V_{k} \\
+U_{jk} &\sim N(0,\sigma_U^2) \\
+V_{k} &\sim N(0,\sigma_V^2) 
+\end{aligned}
+$$
+
+Where $A_{ijk}$ is the age of the respondant, $Y_{ijk}$ is the age at which a student began smoking, $E_{ijk}$ is an indicator for the censored data coded as 0 - They have never tried smoking (right censored data), 1- They have a recorded age of smoking after age 8, and 2- They have begun smoking prior to age 8 (Left censored Data).  $U_{jk}$ is the school random effect and $V_k$ is the state level random effect.  $X_{ijk}$ is a vector of covariates which include the sex of the students, the student's race and their interaction effects, as well as the rural or urban geographical status of the student. The hyperparameters include the rate parameter $\alpha$ as well as the school variance $\sigma_U^2$ and state variance $\sigma_V^2$.  
+
+
+The following information was given regarding the hyperparameters. \
+
++ The variability in the rate of smoking initiation between states is substantial, with some states having double or triple the rate of smoking update compared to other states for comparable individuals. It is not expected to see the ‘worst’ states having five or 10 times the rate of the ‘healthiest’ states.
+
++ Within a given state, the ‘worst’ schools are expected to have at most 50% greater rate than the ‘healthiest’ schools, and differences of 10% to 20% in rates is more typical.
+
++ Although a flat hazard function is expected, it is more likely that the hazard increases with age than decreases with age. The prior probability the hazard falls with age is less than 10%. It would not be unusual to see a quadratic or cubic increase in the hazard with age, but polynomial increases with age involving 5th or 6th powers is improbable.
+
++ Here ‘worst’ or ‘unlikely’ refers to 10th percentile or 10% probability are of the right order of magnitude.
+
+Applying these to the rate parameter, the statements regarding the variance of the random effects have been derived below: \
+
+
+$$
+\begin{aligned}
+P(-z_{0.05}\sigma < \eta < z_{0.05}\sigma ) &= 0.9\ \\
+\text{Where}\ z_{0.05} &= 1.6448 \\
+\Rightarrow P(e^{-z_{0.05}\sigma} < \lambda < e^{z_{0.05}\sigma}) &= 0.9
+\end{aligned}
+$$
+
+
+When considering the magnitude of the difference is at most $\omega = e^{2z_{0.05} \sigma}$. Therefore the following is required of the prior:
+
+$$
+\begin{aligned}
+P(\sigma \in [0,\frac{log(\omega)}{2z_{0.05}}]) = 0.9
+\end{aligned}
+$$
+
+Therefore we can use a penalized complexity prior with parameters $(u,a)$ with which defines $P(\sigma > u) = a$. For the rate parameter $\alpha$ we wish to achieve $P(\alpha < 1) = 0.1$ as this corresponds to a decreasing hazard function and $P(\alpha > 6) \approx 0$.  If it is not unusual to have a quadratic or cubic increase in hazard function we wish to have $P(1 \leq \alpha \leq 4) = 0.8$.  A normal prior with $\mu = 2.5,\ \sigma = 1.170$ achieves this.  We verify these assumptions and therefore the following priors were used.
+
+
+```{r Priors And Assumptions, echo=FALSE}
+PriorFrame <- data.frame(Assumption = character(),
+                         Verification = character(),
+                         Value = numeric())
+NextFrame <- data.frame(Assumption = "Hazard function Decreases < 10%",
+                         Verification = "Prob(alpha < 1)",
+                         Value = pnorm(1, mean = 5/2, sd = 1.170, lower.tail = TRUE, log.p = FALSE))
+
+PriorFrame <- rbind(PriorFrame,NextFrame)
+
+NextFrame <- data.frame(Assumption = "Hazard function Unlikely To Be Greater Than Quintic Increase",
+                         Verification = "Prob(alpha > 6)",
+                         Value = (1 - pnorm(6, mean = 5/2, sd = 1.170, lower.tail = TRUE, log.p = FALSE)))
+
+PriorFrame <- rbind(PriorFrame,NextFrame)
+
+knitr::kable(PriorFrame, caption = "Model Covariates Expressed as Rates as well as random effects and alpha parameter", digits = 3)
+
+Priors <-data.frame(Parameter = c("alpha","School SD", "State SD"), Prior = c("N(2.5,sd = 1.170)","PC(u = 0.12326, a = 0.1)","PC(u = 0.33397, a = 0.1)"))
+
+knitr::kable(Priors, caption = "Model Priors", digits = 3)
+
+
+#PriorFrame <- rbind(PriorFrame,c("Hazard function Decreases < 10%", "Prob(alpha < 1)", pnorm(1, mean = 5/2, sd = 1.170, lower.tail = TRUE, log.p = FALSE))) 
+
+#PriorFrame <- rbind(PriorFrame,c("Hazard function Unlikely To Be Greater Than Quintic Increase" , "Prob(alpha > 6)", (1 - pnorm(6, mean = 5/2, sd = 1.170, lower.tail = TRUE, log.p = FALSE))))
+```
+
+
+
+
+```{r, include=FALSE}
+#The priors used on the parameters $\mu$ and $\beta$ were the default $N(0,10^3)$ in (mean,variance) format. 
+Xwhiteurb <- smoke[, c("Age", "Age_first_tried_cigt_smkg","Sex", "Race", "state", "school", "RuralUrban")]
+Xwhiteurb <- na.omit(Xwhiteurb)
+Xwhiteurb <- Xwhiteurb[(Xwhiteurb$Race == "white" & Xwhiteurb$RuralUrban == "Urban"),]
+
+Xwhiterur <- smoke[, c("Age", "Age_first_tried_cigt_smkg","Sex", "Race", "state", "school", "RuralUrban")]
+Xwhiterur <- na.omit(Xwhiterur)
+Xwhiterur <- Xwhiterur[(Xwhiterur$Race == "white" & Xwhiterur$RuralUrban == "Rural"),]
+```
+
+
+## Results and Analysis
+
+```{r figs, fig.cap="Prior And Posterior Distributions (from left to right), Alpha parameter, school level random effect Standard Deviation, State Level Random Effect Standard Deviation", echo=FALSE}
+#plot.new()
+# We wish to plot the prior and posterior density for the alpha and precision parameters
+
+
+  #From prior and posteriors in the slides
+
+par(mfrow=c(1,3))
+fitS2$priorPost = Pmisc::priorPost(fitS2)
+for (Dparam in fitS2$priorPost$parameters) {
+do.call(matplot,fitS2$priorPost[[Dparam]]$matplot)
+}
+
+do.call(legend, fitS2$priorPost$legend)
+```
+
+
+Along with these priors we have the following credibility intervals.  
+
+Thus when investigating the first hypothesis as seen in figure 7, we find that the geographic variation is in fact smaller than the variation within schools.  Thus the tobacco control programs should not focus on states as a whole, but on the individual school where it plays a greater role.  
+
+Secondly, a flat hazard function corresponds to a value $\alpha = 1$.  We have observed that the 95% credibility interval does not in fact overlap 1 ($3.105 \pm 0.086$). Therefore we find a closer to a quadratic hazard function.
+
+The following hazard function was obtained. 
+$$ h(x) = \alpha x^{\alpha - 1}e^{-\eta_{intercept}}$$
+
+```{r Hazard Function, echo=FALSE, fig.cap="Hazard Function With 95% Baysian Credibility interval on alpha"}
+
+itcept <- -0.6071 #Intercept derived 
+alph <- 3.105 #Alpha and Credibilityintervals
+alphalow <- 3.019
+alphahigh <- 3.191
+xSeq <- seq(8,19, length.out = 100)
+alphagroup = data.frame(est = alph*xSeq^(alph - 1)*exp(-itcept), lower = alphalow*xSeq^(alphalow - 1)*exp(-itcept), upper = alphahigh*xSeq^(alphahigh - 1)*exp(-itcept))
+#Takes simply the smoothing function part of the model
+
+plot(xSeq, alphagroup$est, type = "l", main = "Hazard Function", xlab = "Age", ylab = "Hazard")
+matlines(as.numeric(xSeq), alphagroup[, c("lower", "upper","est")], lty = c(3,3,1), col = c("red", "red", "black"))
+
+
+#plot(xSeq, alph*xSeq^(alph - 1)*exp(-itcept),type='l', xlab='age',ylab='hazard')
+```
+
+
+
+Next to investigate the effects of the model parameters on the rate of smoking we obtain the following:  
+
+```{r, echo=FALSE}
+CovariatesTable <- exp(-fitS2$summary.fixed[, c("mean", "0.025quant", "0.975quant")])
+                         
+CovariatesTable <- CovariatesTable[,c(1,3,2)]
+colnames(CovariatesTable) <- c("mean", "0.025quant", "0.975quant")
+CovariatesTable <- rbind(CovariatesTable,Pmisc::priorPostSd(fitS2)$summary[, c("mean", "0.025quant","0.975quant")])
+CovariatesTable <- rbind(CovariatesTable,fitS2$summary.hyperpar["alpha parameter for weibullsurv",c("mean", "0.025quant", "0.975quant")])
+knitr::kable(CovariatesTable, caption = "Model Covariates Expressed as Rates as well as random effects and alpha parameter", digits = 3)
+```
+
+
+
+Thus from these covariate parameters we have found that white male students from rural areas tend to have a smoking rate of 0.883 of their urban counterparts with a 95% credibility region of (0.830,0.939).  It was also found that females were found to have a higher smoking rate as well as Asians when compared to white males. 
+
+We were able to find a difference in the smoking rates of rural and urban white males, however, like all conclusions from Bayesian models, this does depend on initial assumptions.  As moreinformation regarding the priors becomes available, this question may be worth revisiting with these considerations.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
